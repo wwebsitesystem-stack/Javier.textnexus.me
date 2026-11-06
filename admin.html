@@ -141,12 +141,17 @@
     <section class="card" id="auth-card">
         <h2>Owner sign-in</h2>
         <p style="font-size:0.8rem;color:var(--text-dim);line-height:1.7;margin-bottom:18px;">
-            This panel is restricted to one account. Enter the owner email and we'll send a one-time
-            sign-in link to that inbox. Any other address is rejected.
+            This panel is restricted to the authorized owner accounts. Enter one of those emails and
+            we'll send a one-time sign-in link to that inbox. Any other address is rejected.
         </p>
         <div class="field">
-            <label>Owner email</label>
-            <input type="email" id="email-input" value="jcruz016@stpaul.k12.mn.us" spellcheck="false">
+            <label>Authorized email</label>
+            <input type="email" id="email-input" value="jcruz016@stpaul.k12.mn.us" spellcheck="false" list="allowed-emails">
+            <datalist id="allowed-emails">
+                <option value="jcruz016@stpaul.k12.mn.us"></option>
+                <option value="brodywilliams0226@gmail.com"></option>
+            </datalist>
+            <p class="lock-note" style="margin-top:0;">Authorized accounts: <strong style="color:var(--accent)">jcruz016@stpaul.k12.mn.us</strong> and <strong style="color:var(--accent)">brodywilliams0226@gmail.com</strong>.</p>
         </div>
         <button class="btn primary" id="send-link-btn" style="width:100%;">Send sign-in link</button>
         <div class="msg" id="auth-msg"></div>
@@ -226,11 +231,13 @@
 
 <script>
 (function () {
-    const ALLOWED_EMAIL = 'jcruz016@stpaul.k12.mn.us';
+    const ALLOWED_EMAILS = ['jcruz016@stpaul.k12.mn.us', 'brodywilliams0226@gmail.com'];
     const SUPABASE_URL = 'https://npvjxyxnmdcncupbwdsx.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdmp4eXhubWRjbmN1cGJ3ZHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyOTU0MjcsImV4cCI6MjA4Mjg3MTQyN30.hZhxWo1iR8O0r66vIeElcsPy1PljtpJ_dEbAOvhrr1Q';
     const SNAPSHOT_KEY = 'gl_admin_snapshots_v1';
-    const ALLOWED = ALLOWED_EMAIL.toLowerCase();
+    const ALLOWED = ALLOWED_EMAILS.map(e => e.toLowerCase());
+    const ALLOWED_LABEL = ALLOWED_EMAILS.join(' or ');
+    const isAllowed = (email) => ALLOWED.includes(String(email || '').trim().toLowerCase());
 
     const $ = (id) => document.getElementById(id);
     const authCard = $('auth-card');
@@ -412,15 +419,14 @@
         authCard.classList.add('hidden');
         deniedCard.classList.remove('hidden');
         toolbar.style.display = 'flex';
-        $('denied-text').textContent = 'The signed-in account (' + email + ') is not the site owner. ' +
-            'Only ' + ALLOWED_EMAIL + ' can open this panel.';
+        $('denied-text').textContent = 'The signed-in account (' + email + ') is not authorized. ' +
+            'Allowed accounts: ' + ALLOWED_EMAILS.join(', ') + '.';
         stopPresence();
     }
 
     async function handleSession(session) {
         if (!session || !session.user) { showAuth(); return; }
-        const email = (session.user.email || '').toLowerCase();
-        if (email !== ALLOWED) { showDenied(session.user.email || 'unknown'); return; }
+        if (!isAllowed(session.user.email)) { showDenied(session.user.email || 'unknown'); return; }
         showDashboard(session);
     }
 
@@ -437,20 +443,20 @@
 
         $('send-link-btn').addEventListener('click', async () => {
             const email = ($('email-input').value || '').trim().toLowerCase();
-            if (email !== ALLOWED) {
-                showAuthMessage('That address is not the site owner. Only ' + ALLOWED_EMAIL + ' can sign in.', 'err');
+            if (!isAllowed(email)) {
+                showAuthMessage('That address is not authorized. Allowed accounts: ' + ALLOWED_EMAILS.join(', ') + '.', 'err');
                 return;
             }
             const btn = $('send-link-btn');
             btn.disabled = true;
             showAuthMessage('Sending sign-in link…', 'ok');
             const { error } = await client.auth.signInWithOtp({
-                email: ALLOWED_EMAIL,
+                email: email,
                 options: { emailRedirectTo: location.origin + location.pathname }
             });
             btn.disabled = false;
             if (error) showAuthMessage('Could not send the link: ' + error.message, 'err');
-            else showAuthMessage('Link sent to ' + ALLOWED_EMAIL + '. Open it on this device to finish signing in.', 'ok');
+            else showAuthMessage('Link sent to ' + email + '. Open it on this device to finish signing in.', 'ok');
         });
 
         const signOut = async () => {
