@@ -133,41 +133,26 @@
         <div class="toolbar" id="toolbar" style="display:none;">
             <button class="btn" id="refresh-btn">Refresh</button>
             <a class="btn" href="index.html">Back to site</a>
-            <button class="btn" id="signout-btn">Sign out</button>
+            <button class="btn" id="lock-btn">Lock</button>
         </div>
     </header>
 
-    <!-- SIGN-IN -->
+    <!-- ACCESS CODE -->
     <section class="card" id="auth-card">
-        <h2>Owner sign-in</h2>
+        <h2>Access code</h2>
         <p style="font-size:0.8rem;color:var(--text-dim);line-height:1.7;margin-bottom:18px;">
-            This panel is restricted to the authorized owner accounts. Enter one of those emails and
-            we'll send a one-time sign-in link to that inbox. Any other address is rejected.
+            Enter the access code to open the visits dashboard.
         </p>
         <div class="field">
-            <label>Authorized email</label>
-            <input type="email" id="email-input" value="jcruz016@stpaul.k12.mn.us" spellcheck="false" list="allowed-emails">
-            <datalist id="allowed-emails">
-                <option value="jcruz016@stpaul.k12.mn.us"></option>
-                <option value="brodywilliams0226@gmail.com"></option>
-            </datalist>
-            <p class="lock-note" style="margin-top:0;">Authorized accounts: <strong style="color:var(--accent)">jcruz016@stpaul.k12.mn.us</strong> and <strong style="color:var(--accent)">brodywilliams0226@gmail.com</strong>.</p>
+            <label>Code</label>
+            <input type="password" id="code-input" inputmode="numeric" autocomplete="off" placeholder="••••" maxlength="12"
+                   style="letter-spacing:8px;font-size:1.2rem;text-align:center;">
         </div>
-        <button class="btn primary" id="send-link-btn" style="width:100%;">Send sign-in link</button>
+        <button class="btn primary" id="unlock-btn" style="width:100%;">Unlock</button>
         <div class="msg" id="auth-msg"></div>
         <p class="lock-note">
-            Access is checked against the signed-in account's email on every load — not just a hidden button.
-            If the link does not arrive, check spam, then the Supabase auth email settings for this project.
+            The panel unlocks for this tab only and locks again when you press <strong>Lock</strong> or close it.
         </p>
-    </section>
-
-    <!-- DENIED -->
-    <section class="card hidden" id="denied-card">
-        <h2>Access denied</h2>
-        <p style="font-size:0.85rem;color:var(--text-dim);line-height:1.7;" id="denied-text">
-            This account is not the site owner.
-        </p>
-        <button class="btn" id="denied-signout-btn" style="margin-top:16px;">Sign out and try another email</button>
     </section>
 
     <!-- DASHBOARD -->
@@ -215,7 +200,7 @@
                 <h2>Cloudflare domain</h2>
                 <div class="row"><span>Hostname</span><span id="cf-host">—</span></div>
                 <div class="row"><span>Edge</span><span>Cloudflare + GitHub Pages</span></div>
-                <div class="row"><span>Panel access</span><span id="session-email">—</span></div>
+                <div class="row"><span>Panel access</span><span>access code</span></div>
                 <a class="btn" style="margin-top:16px;width:100%;" href="https://dash.cloudflare.com/?to=/:account/textnexus.me/analytics/traffic" target="_blank" rel="noopener noreferrer">Open Cloudflare analytics</a>
             </div>
         </section>
@@ -231,17 +216,14 @@
 
 <script>
 (function () {
-    const ALLOWED_EMAILS = ['jcruz016@stpaul.k12.mn.us', 'brodywilliams0226@gmail.com'];
+    const ACCESS_CODE = '1111';
     const SUPABASE_URL = 'https://npvjxyxnmdcncupbwdsx.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdmp4eXhubWRjbmN1cGJ3ZHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyOTU0MjcsImV4cCI6MjA4Mjg3MTQyN30.hZhxWo1iR8O0r66vIeElcsPy1PljtpJ_dEbAOvhrr1Q';
     const SNAPSHOT_KEY = 'gl_admin_snapshots_v1';
-    const ALLOWED = ALLOWED_EMAILS.map(e => e.toLowerCase());
-    const ALLOWED_LABEL = ALLOWED_EMAILS.join(' or ');
-    const isAllowed = (email) => ALLOWED.includes(String(email || '').trim().toLowerCase());
+    const UNLOCK_KEY = 'gl_admin_unlocked';
 
     const $ = (id) => document.getElementById(id);
     const authCard = $('auth-card');
-    const deniedCard = $('denied-card');
     const dashboard = $('dashboard');
     const toolbar = $('toolbar');
     const authMsg = $('auth-msg');
@@ -395,77 +377,61 @@
         $('stat-online').textContent = '—';
     }
 
-    function showDashboard(session) {
+    function isUnlocked() {
+        try { return sessionStorage.getItem(UNLOCK_KEY) === '1'; }
+        catch (e) { return false; }
+    }
+
+    function showDashboard() {
         authCard.classList.add('hidden');
-        deniedCard.classList.add('hidden');
         dashboard.classList.remove('hidden');
         toolbar.style.display = 'flex';
-        $('session-email').textContent = session.user.email;
         renderBrowserStats();
-        startPresence();
-        loadVisits();
+        if (client) {
+            startPresence();
+            loadVisits();
+        }
     }
 
     function showAuth() {
         dashboard.classList.add('hidden');
-        deniedCard.classList.add('hidden');
         authCard.classList.remove('hidden');
         toolbar.style.display = 'none';
         stopPresence();
     }
 
-    function showDenied(email) {
-        dashboard.classList.add('hidden');
-        authCard.classList.add('hidden');
-        deniedCard.classList.remove('hidden');
-        toolbar.style.display = 'flex';
-        $('denied-text').textContent = 'The signed-in account (' + email + ') is not authorized. ' +
-            'Allowed accounts: ' + ALLOWED_EMAILS.join(', ') + '.';
-        stopPresence();
+    function unlockPanel() {
+        const code = ($('code-input').value || '').trim();
+        if (code !== ACCESS_CODE) {
+            showAuthMessage('Incorrect code. Try again.', 'err');
+            $('code-input').select();
+            return;
+        }
+        try { sessionStorage.setItem(UNLOCK_KEY, '1'); } catch (e) { /* private mode */ }
+        authMsg.className = 'msg';
+        showDashboard();
     }
 
-    async function handleSession(session) {
-        if (!session || !session.user) { showAuth(); return; }
-        if (!isAllowed(session.user.email)) { showDenied(session.user.email || 'unknown'); return; }
-        showDashboard(session);
+    function lockPanel() {
+        try { sessionStorage.removeItem(UNLOCK_KEY); } catch (e) { /* ignore */ }
+        $('code-input').value = '';
+        showAuth();
     }
 
     function init() {
-        if (!window.supabase) {
-            showAuthMessage('The Supabase library failed to load. Disable any content blocker and reload.', 'err');
-            $('send-link-btn').disabled = true;
-            return;
+        if (window.supabase) {
+            client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } else {
+            showAuthMessage('The stats library failed to load — visit numbers will be unavailable. Disable any content blocker and reload.', 'err');
         }
-        client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        client.auth.getSession().then(({ data }) => handleSession(data && data.session));
-        client.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') handleSession(session); });
-
-        $('send-link-btn').addEventListener('click', async () => {
-            const email = ($('email-input').value || '').trim().toLowerCase();
-            if (!isAllowed(email)) {
-                showAuthMessage('That address is not authorized. Allowed accounts: ' + ALLOWED_EMAILS.join(', ') + '.', 'err');
-                return;
-            }
-            const btn = $('send-link-btn');
-            btn.disabled = true;
-            showAuthMessage('Sending sign-in link…', 'ok');
-            const { error } = await client.auth.signInWithOtp({
-                email: email,
-                options: { emailRedirectTo: location.origin + location.pathname }
-            });
-            btn.disabled = false;
-            if (error) showAuthMessage('Could not send the link: ' + error.message, 'err');
-            else showAuthMessage('Link sent to ' + email + '. Open it on this device to finish signing in.', 'ok');
-        });
-
-        const signOut = async () => {
-            if (client) await client.auth.signOut();
-            showAuth();
-        };
-        $('signout-btn').addEventListener('click', signOut);
-        $('denied-signout-btn').addEventListener('click', signOut);
+        $('unlock-btn').addEventListener('click', unlockPanel);
+        $('code-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockPanel(); });
+        $('lock-btn').addEventListener('click', lockPanel);
         $('refresh-btn').addEventListener('click', () => { renderBrowserStats(); loadVisits(); });
+
+        if (isUnlocked()) showDashboard();
+        else showAuth();
     }
 
     init();
