@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GhostLink - Free Proxy Browser</title>
+    <link rel="icon" type="image/png" href="https://cdn.jsdelivr.net/gh/virtuan4-max/ghostlinkhub@main/assets/favicon.png">
     <meta name="description" content="GhostLink is a free proxy browser. Access any website anonymously and securely.">
     <meta name="keywords" content="ghostlink, proxy, browser, anonymous browsing, unblock websites">
     <meta name="author" content="GhostLink">
@@ -2284,7 +2285,7 @@
             <div class="hero">
                 <h1>Welcome to<br><span id="typewriter"></span></h1>
                 <p class="subtitle" style="color: var(--text-dim); margin-top: 10px;">
-                    GhostLink Network // <span class="total-visits-display" id="total-visits" style="font-size:1em; opacity:1; margin-left:0;">...</span>
+                    GhostLink Network // <span class="total-visits-display" id="total-visits" style="font-size:1em; opacity:1; margin-left:0;">...</span> · <span id="online-count" style="color:var(--accent)">–</span> online
                 </p>
                 <button class="btn-start" onclick="glInitSystems()">INITIALIZE SYSTEMS</button>
             </div>
@@ -2570,6 +2571,12 @@
                     </div>
 
                     <button class="preset-btn" onclick="resetShortcuts()" style="width:100%; margin-top:12px;">RESET SHORTCUTS</button>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Admin Panel</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 15px; line-height: 1.5;">Owner-only dashboard with live visits for this domain. Sign-in is limited to the site owner's email address.</p>
+                    <button class="btn-start" style="margin-top: 0; width: 100%;" onclick="window.open('admin.html', '_blank', 'noopener')">OPEN ADMIN PANEL</button>
                 </div>
 
                 <!-- REPO FILE EXPLORER CARD -->
@@ -5245,6 +5252,10 @@
                 });
             }
             initTotalVisits();
+            initOnlineUsers();
+
+            // A shared ?id= link should land straight in the game it points at.
+            if (new URLSearchParams(location.search).get('id') !== null) nav('games');
             checkForUpdates();
         };
 
@@ -7187,97 +7198,19 @@
 
         // --- GAMES LOGIC ---
         function cleanHTML(html) {
-            // ── Phase 1: Targeted DOM junk removal (ad divs, sidebarad CSS) ──
-            html = html.replace(/#sidebarad1\s*,\s*\n?#sidebarad2[\s\S]*?\.sidebar-frame\s*\{[\s\S]*?\}/g, '');
+            // Some game files ship ad wrappers on top of the real game. Strip only
+            // those ad blocks — the old version also deleted any script that looked
+            // "obfuscated", which removed 25 real game scripts and broke those games.
+            html = html.replace(/#sidebarad1\s*,\s*#sidebarad2[\s\S]*?\.sidebar-frame\s*\{[\s\S]*?\}/g, '');
             html = html.replace(/<div\s+id=["']sidebarad[12]["'][^>]*>[\s\S]*?<\/div>\s*(<\/div>)?/g, '');
             html = html.replace(/<style>[^<]*#sidebarad[\s\S]*?<\/style>/g, '');
 
-            // ── Phase 2: Universal obfuscated <script> removal ──
-            // Extracts every <script> block, scores it for obfuscation signals,
-            // and drops it if the score crosses the threshold.
-            html = html.replace(/<script(\s[^>]*)?>[\s\S]*?<\/script>/gi, (fullTag) => {
-                // Always keep external scripts (src="…") — they are not inline obfuscation
-                if (/\ssrc\s*=/i.test(fullTag)) return fullTag;
-
-                // Pull just the body text between the tags
-                const body = fullTag.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '');
-
-                let score = 0;
-
-                // ── Hard patterns: one match = instant removal ──
-                const hardPatterns = [
-                    // _0x hex-variable names from javascript-obfuscator / obfuscator.io
-                    /_0x[a-f0-9]{3,}\s*[\[=(,;]/i,
-                    // eval( wrapping a decoded string
-                    /eval\s*\(\s*(atob|unescape|decodeURI|String\.fromCharCode)\s*\(/i,
-                    // Function constructor as eval surrogate  e.g. Function("return …")()
-                    /new\s+Function\s*\(\s*["'`][^"'`]{30,}/,
-                    // p,a,c,k,e,r packer signature
-                    /eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*[rd]\s*\)/,
-                    // JSFuck / JJEncode: heavy use of []!+ symbols
-                    /(\[\]|\!\[\])\s*\+\s*(\[\]|\!\[\])\s*\+\s*(\[\]|\!\[\])/,
-                    // Aaencode / smiley obfuscation
-                    /ﾟωﾟ|ﾟΘﾟ|ﾟｰﾟ/,
-                    // Hex-encoded string property access  obj['\x61\x74\x6f\x62']
-                    /\[['"`](?:\\x[0-9a-f]{2}){3,}['"`]\]/i,
-                    // atob + immediate eval pipeline
-                    /\batob\s*\([^)]*\)\s*[,;)]\s*(eval|Function)\b/i,
-                ];
-
-                for (const pat of hardPatterns) {
-                    if (pat.test(body)) return ''; // instant strip
-                }
-
-                // ── Soft signals: accumulate a score ──
-
-                // _0x hex variable references anywhere (softer — needs more signals to confirm)
-                const hexVarMatches = (body.match(/_0x[a-f0-9]{3,}/gi) || []).length;
-                score += Math.min(hexVarMatches * 3, 30);
-
-                // Hex escape sequences  \x61\x74
-                const hexEscapes = (body.match(/\\x[0-9a-f]{2}/gi) || []).length;
-                score += Math.min(hexEscapes * 2, 20);
-
-                // Unicode escapes  \u0041
-                const unicodeEscapes = (body.match(/\\u[0-9a-f]{4}/gi) || []).length;
-                score += Math.min(unicodeEscapes * 2, 20);
-
-                // String.fromCharCode usage
-                if (/String\s*\.\s*fromCharCode\s*\(/.test(body)) score += 15;
-
-                // Bare atob( or btoa( — common in decode pipelines
-                if (/\batob\s*\(/.test(body)) score += 10;
-                if (/\bbtoa\s*\(/.test(body)) score += 5;
-
-                // unescape( — old-school obfuscation
-                if (/\bunescape\s*\(/.test(body)) score += 10;
-
-                // Bare eval( without decode wrapper (still suspicious)
-                if (/\beval\s*\(/.test(body)) score += 15;
-
-                // Very long single tokens (minified/packed source, long encoded strings)
-                const longTokens = (body.match(/[^\s,;(){}\[\]"'`]{200,}/g) || []).length;
-                score += longTokens * 8;
-
-                // Long base64-looking strings  (A-Za-z0-9+/=  run of 60+ chars)
-                const b64Runs = (body.match(/[A-Za-z0-9+/=]{60,}/g) || []).length;
-                score += b64Runs * 5;
-
-                // Dense comma-separated number arrays (common in charcode obfuscation)
-                const numArrays = (body.match(/(?:\d+\s*,\s*){10,}\d+/g) || []).length;
-                score += numArrays * 8;
-
-                // High ratio of non-alphanumeric characters (symbol soup)
-                const nonAlpha = (body.match(/[^a-zA-Z0-9\s]/g) || []).length;
-                const ratio = body.length > 0 ? nonAlpha / body.length : 0;
-                if (ratio > 0.6 && body.length > 200) score += 20;
-
-                // Obfuscated array-rotation / self-defence tricks
-                if (/\bsetInterval\s*\(.*\btoString\b/s.test(body)) score += 10;
-                if (/parseInt\s*\([^)]+\)\s*!==?\s*parseInt\s*\(/.test(body)) score += 10;
-
-                // Strip if total score is high enough
-                return score >= 25 ? '' : fullTag;
+            const AD_MARKERS = /(adblock|adsbygoogle|googlesyndication|popads|popunder|propellerads|onclickads|adcash|mgid|revcontent|taboola|outbrain|exoclick|juicyads|trafficjunky|hilltopads|clickadu|adsterra|monetag)\b/i;
+            html = html.replace(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi, (fullTag, attrs, body) => {
+                if (!attrs || /\ssrc\s*=/i.test(attrs)) return fullTag;
+                if (!body || !AD_MARKERS.test(body)) return fullTag;
+                // Only bail out when the ad network is what the script is about.
+                return AD_MARKERS.test(body.slice(0, 4000)) ? '' : fullTag;
             });
 
             return html;
@@ -7327,28 +7260,59 @@
                 }
                 const response = await fetch(zonesURL + "?t=" + Date.now());
                 zones = await response.json();
-                await gamesFetchPopularity();
+                if (!gamesLoadPopularityCache()) gamesFetchPopularity();
                 gamesSetupFeatured();
                 gamesHandleSearch();
+                const deepLinkId = new URLSearchParams(location.search).get('id');
+                if (deepLinkId !== null) {
+                    const deepGame = zones.find(z => String(z.id) === String(deepLinkId));
+                    if (deepGame) openZone(deepGame);
+                }
             } catch (error) {
                 gamesContainer.innerHTML = "Error: " + error;
             }
         }
 
-        async function gamesFetchPopularity() {
+        let gamesPopularityLoaded = false;
+        let gamesPopularityLoading = null;
+
+        function gamesLoadPopularityCache() {
             try {
-                const response = await fetch("https://data.jsdelivr.com/v1/stats/packages/gh/gn-math/html@main/files?period=year");
-                const data = await response.json();
-                data.forEach(file => {
-                    const idMatch = file.name.match(/\/(\d+)\.html$/);
-                    if (idMatch) {
-                        const id = parseInt(idMatch[1]);
-                        gamesPopularityData[id] = file.hits.total;
-                    }
-                });
-            } catch (error) {
-                gamesPopularityData[0] = 0;
-            }
+                const cached = JSON.parse(localStorage.getItem('gn-popularity-v1') || 'null');
+                if (cached && cached.at && cached.data && Date.now() - cached.at < 12 * 60 * 60 * 1000) {
+                    gamesPopularityData = cached.data;
+                    gamesPopularityLoaded = true;
+                    return true;
+                }
+            } catch (e) { /* corrupt cache — ignore and refetch */ }
+            return false;
+        }
+
+        async function gamesFetchPopularity() {
+            if (gamesPopularityLoading) return gamesPopularityLoading;
+            gamesPopularityLoading = (async () => {
+                try {
+                    const response = await fetch("https://data.jsdelivr.com/v1/stats/packages/gh/gn-math/html@main/files?period=month");
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    const data = await response.json();
+                    if (!Array.isArray(data)) throw new Error('Unexpected stats payload');
+                    data.forEach(file => {
+                        const idMatch = String(file.name).match(/\/(\d+)\.html$/);
+                        if (idMatch) {
+                            gamesPopularityData[parseInt(idMatch[1])] = file.hits && file.hits.total ? file.hits.total : 0;
+                        }
+                    });
+                    gamesPopularityLoaded = true;
+                    try {
+                        localStorage.setItem('gn-popularity-v1', JSON.stringify({ at: Date.now(), data: gamesPopularityData }));
+                    } catch (e) { /* storage full — not fatal */ }
+                } catch (error) {
+                    console.warn('Popularity stats unavailable, falling back to zone order:', error);
+                    gamesPopularityLoaded = true;
+                }
+                gamesPopularityLoading = null;
+            })();
+            return gamesPopularityLoading;
         }
 
         function gamesSetupFeatured() {
@@ -7367,6 +7331,7 @@
             };
             const rand = seededRandom(seed);
             let pool = [...zones].filter(z => !z.name.includes("SUGGEST"));
+            if (pool.length < 10) return;
             gamesFeaturedGames = [];
             for (let i = 0; i < 10; i++) {
                 let idx = Math.floor(rand() * pool.length);
@@ -7441,11 +7406,88 @@
             gamesPauseTimer = setTimeout(gamesStartCarousel, 4000);
         }
 
+        function gamesEscape(text) {
+            return String(text == null ? '' : text)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function gamesResolveUrl(url) {
+            return String(url || '')
+                .replace(/\{COVER_URL\}/g, coverURL)
+                .replace(/\{HTML_URL\}/g, htmlURL);
+        }
+
+        function gamesRawFallback(url) {
+            // jsDelivr refuses files over ~20 MB (403). GitHub raw serves them fine.
+            const match = /^https:\/\/cdn\.jsdelivr\.net\/gh\/([^/@]+)\/([^@/]+)@([^/]+)\/(.+)$/.exec(url);
+            if (!match) return null;
+            const ref = match[3] === 'latest' ? 'main' : match[3];
+            return `https://raw.githubusercontent.com/${match[1]}/${match[2]}/${ref}/${match[4]}`;
+        }
+
+        async function gamesFetchText(url) {
+            const candidates = [url];
+            const fallback = gamesRawFallback(url);
+            if (fallback) candidates.push(fallback);
+            let lastError = null;
+            for (const candidate of candidates) {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 30000);
+                try {
+                    const response = await fetch(candidate, { cache: 'no-store', signal: controller.signal });
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return await response.text();
+                } catch (error) {
+                    lastError = error;
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+            throw lastError || new Error('Game file could not be downloaded');
+        }
+
+        function gamesWriteFrame(html) {
+            // The old code reused a detached iframe after closing a game, so every
+            // game opened after the first one rendered into nowhere (blank screen).
+            if (!zoneFrame || !zoneFrame.isConnected) {
+                zoneFrame = document.createElement('iframe');
+                zoneFrame.id = 'zoneFrame';
+                zoneViewer.appendChild(zoneFrame);
+            }
+            zoneFrame.removeAttribute('srcdoc');
+            const doc = zoneFrame.contentDocument;
+            if (!doc) {
+                zoneFrame.srcdoc = html;
+                return;
+            }
+            doc.open();
+            doc.write(html);
+            doc.close();
+        }
+
+        function gamesShowFrameMessage(title, message) {
+            gamesWriteFrame(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                html,body{height:100%;margin:0;background:#000;color:#94a3b8;font-family:'Courier New',monospace;display:flex;align-items:center;justify-content:center;text-align:center}
+                .box{max-width:520px;padding:26px;line-height:1.7}
+                h2{color:#6ecbff;font-size:1.02rem;margin:0 0 10px;letter-spacing:1px;text-transform:uppercase}
+                p{font-size:0.86rem;margin:0}
+            </style></head><body><div class="box"><h2>${title}</h2><p>${message}</p></div></body></html>`);
+        }
+
         function gamesHandleSearch() {
-            const query = document.getElementById('gamesSearchInput').value.toLowerCase();
+            const query = (document.getElementById('gamesSearchInput').value || '').toLowerCase();
             const sortBy = document.getElementById('gamesSortSelect').value;
+
+            if (sortBy === 'popular' && !gamesPopularityLoaded) {
+                gamesFetchPopularity().then(() => {
+                    const select = document.getElementById('gamesSortSelect');
+                    if (select && select.value === 'popular') gamesHandleSearch();
+                });
+            }
+
             let filtered = zones.filter(z => {
-                const matchesSearch = z.name.toLowerCase().includes(query);
+                const matchesSearch = (z.name || '').toLowerCase().includes(query);
                 const matchesFav = gamesShowFavsOnly ? gamesFavorites.includes(z.id) : true;
                 return matchesSearch && matchesFav;
             });
@@ -7477,14 +7519,17 @@
         }
 
         function gamesRenderGrid(data) {
-            const query = document.getElementById('gamesSearchInput').value.toLowerCase();
-            const displayData = data.filter(z => {
-                const matchesSearch = z.name.toLowerCase().includes(query);
-                const matchesFav = gamesShowFavsOnly ? gamesFavorites.includes(z.id) : true;
-                return matchesSearch && matchesFav;
-            });
             gamesContainer.innerHTML = "";
-            displayData.forEach(file => {
+            if (!data.length) {
+                const empty = document.createElement('p');
+                empty.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--text-dim);padding:40px 0;font-size:0.9rem;';
+                empty.textContent = gamesShowFavsOnly && !gamesFavorites.length
+                    ? 'No favorites yet — tap the heart on any game to save it here.'
+                    : 'No games matched that search.';
+                gamesContainer.appendChild(empty);
+                return;
+            }
+            data.forEach(file => {
                 const div = document.createElement('div');
                 div.className = 'zone-item';
                 div.onclick = () => openZone(file);
@@ -7493,7 +7538,9 @@
                 heart.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
                 heart.onclick = (e) => gamesToggleHeart(e, file.id);
                 const img = document.createElement('img');
-                img.src = file.cover.replace("{COVER_URL}", coverURL).replace("{HTML_URL}", htmlURL);
+                img.loading = 'lazy';
+                img.alt = file.name;
+                img.src = gamesResolveUrl(file.cover);
                 const p = document.createElement('p');
                 p.textContent = file.name;
                 div.append(heart, img, p);
@@ -7501,30 +7548,31 @@
             });
         }
 
-        function openZone(file) {
-            if (file.name === "[!] GHOSTLINK DISCORD .gg/D4c9VFYWyU") {
-                window.open("https://discord.com/invite/dKs2sUNUXd", "_blank");
+        async function openZone(file) {
+            if (!file || !file.url) return;
+            if (file.name && file.name.indexOf('SUGGEST') !== -1) {
+                window.open(file.url, '_blank', 'noopener');
                 return;
             }
-            if (file.url.startsWith("http")) {
-                window.open(file.url, "_blank");
-            } else {
-                const url = file.url.replace("{COVER_URL}", coverURL).replace("{HTML_URL}", htmlURL);
-                fetch(url + "?t=" + Date.now()).then(response => response.text()).then(html => {
-                    html = cleanHTML(html);
-                    if (!zoneFrame || zoneFrame.contentDocument === null) {
-                        zoneFrame = document.createElement("iframe");
-                        zoneFrame.id = "zoneFrame";
-                        zoneViewer.appendChild(zoneFrame);
-                    }
-                    zoneFrame.contentDocument.open();
-                    zoneFrame.contentDocument.write(html);
-                    zoneFrame.contentDocument.close();
-                    document.getElementById('zoneName').textContent = file.name;
-                    zoneViewer.dataset.zoneId = file.id;
-                    zoneViewer.style.display = "flex";
-                    zoneViewer.hidden = false;
-                }).catch(error => alert("Failed to load zone: " + error));
+            if (/^https?:/i.test(file.url)) {
+                window.open(file.url, '_blank', 'noopener');
+                return;
+            }
+
+            document.getElementById('zoneName').textContent = file.name;
+            zoneViewer.dataset.zoneId = file.id;
+            zoneViewer.hidden = false;
+            zoneViewer.style.display = "flex";
+            gamesShowFrameMessage('Loading', 'Fetching ' + gamesEscape(file.name) + '…');
+
+            const url = gamesResolveUrl(file.url);
+            try {
+                const html = cleanHTML(await gamesFetchText(url));
+                if (!html || !html.trim()) throw new Error('empty game file');
+                gamesWriteFrame(html);
+            } catch (error) {
+                console.warn('Zone failed to load:', file.name, url, error);
+                gamesShowFrameMessage('Game unavailable', 'This game could not be loaded right now. Try another one, or press Download to save the file.');
             }
         }
 
@@ -7534,28 +7582,34 @@
             if (zoneFrame && zoneFrame.parentNode) {
                 zoneViewer.removeChild(zoneFrame);
             }
+            zoneFrame = null;
+            delete zoneViewer.dataset.zoneId;
             const url = new URL(window.location);
             url.searchParams.delete('id');
-            history.pushState(null, '', url.toString());
+            history.replaceState(null, '', url.toString());
         }
 
-        function downloadZone() {
-            let zone = zones.find(zone => zone.id + '' === zoneViewer.dataset.zoneId);
-            fetch(zone.url.replace("{HTML_URL}", htmlURL) + "?t=" + Date.now()).then(res => res.text()).then(text => {
-                text = cleanHTML(text);
+        async function downloadZone() {
+            const zone = zones.find(z => String(z.id) === String(zoneViewer.dataset.zoneId));
+            if (!zone || !zone.url) return;
+            try {
+                const text = cleanHTML(await gamesFetchText(gamesResolveUrl(zone.url)));
                 const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = zone.name + ".html";
+                a.download = zone.name.replace(/[^\w\-. ]+/g, '_') + ".html";
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-            });
+            } catch (error) {
+                alert("Download failed: " + error.message);
+            }
         }
 
         function fullscreenZone() {
+            if (!zoneFrame || !zoneFrame.isConnected) return;
             if (zoneFrame.requestFullscreen) {
                 zoneFrame.requestFullscreen();
             } else if (zoneFrame.webkitRequestFullscreen) {
@@ -7563,8 +7617,12 @@
             }
         }
 
+        let gamesResizeTimer = null;
         window.addEventListener('resize', () => {
-            if (gamesFeaturedGames.length > 0) gamesRenderFeatured();
+            clearTimeout(gamesResizeTimer);
+            gamesResizeTimer = setTimeout(() => {
+                if (gamesFeaturedGames.length > 0) gamesRenderFeatured();
+            }, 250);
         });
     // ---END GAMES LOGIC---
     </script>
@@ -8598,6 +8656,5 @@
             }
         });
     </script>
-    <script src="nexus-matrix-listener.js"></script>
 </body>
 </html>

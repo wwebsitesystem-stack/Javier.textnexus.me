@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostLink // Admin</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/png" href="https://cdn.jsdelivr.net/gh/virtuan4-max/ghostlinkhub@main/assets/favicon.png">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.js"></script>
+    <style>
+        :root {
+            --bg: #000000;
+            --accent: #6ecbff;
+            --accent-glow: rgba(110, 203, 255, 0.3);
+            --text-primary: #ffffff;
+            --text-dim: #94a3b8;
+            --border: rgba(110, 203, 255, 0.12);
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --input-bg: rgba(255, 255, 255, 0.05);
+            --danger: #ff4b4b;
+            --font: 'Courier New', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text-primary);
+            font-family: var(--font);
+            padding: 36px 20px 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .wrap { width: 100%; max-width: 980px; }
+        header.top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+        h1 { font-size: 1.35rem; letter-spacing: 1px; }
+        h1 span { color: var(--accent); text-shadow: 0 0 14px var(--accent-glow); }
+        .sub { font-size: 0.76rem; color: var(--text-dim); margin-top: 8px; letter-spacing: 1px; text-transform: uppercase; }
+        .btn {
+            font-family: var(--font);
+            font-size: 0.74rem;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: 0.18s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn:hover { border-color: var(--accent); color: var(--accent); }
+        .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: bold; }
+        .btn.primary:hover { box-shadow: 0 0 14px var(--accent-glow); color: #000; }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px;
+            backdrop-filter: blur(10px);
+        }
+        .card h2 {
+            font-size: 0.78rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 16px;
+            font-weight: bold;
+        }
+        .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+        .stat { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+        .stat .label { font-size: 0.66rem; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+        .stat .value { font-size: 1.9rem; font-weight: bold; color: var(--accent); text-shadow: 0 0 16px var(--accent-glow); line-height: 1.1; }
+        .stat .note { font-size: 0.66rem; color: var(--text-dim); margin-top: 8px; line-height: 1.45; }
+        section { margin-bottom: 18px; }
+        .chart { display: flex; align-items: flex-end; gap: 8px; height: 140px; margin-top: 6px; }
+        .bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px; height: 100%; }
+        .bar { width: 100%; background: linear-gradient(180deg, var(--accent), rgba(110,203,255,0.15)); border-radius: 4px 4px 0 0; min-height: 2px; transition: height 0.3s; }
+        .bar-col .day { font-size: 0.6rem; color: var(--text-dim); letter-spacing: 1px; }
+        .bar-col .num { font-size: 0.66rem; color: var(--text-primary); }
+        .row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.8rem; padding: 9px 0; border-bottom: 1px solid var(--border); }
+        .row:last-child { border-bottom: none; }
+        .row span:last-child { color: var(--accent); }
+        .row span:first-child { color: var(--text-dim); }
+        .field { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+        .field label { font-size: 0.68rem; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); }
+        input[type="text"], input[type="email"] {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            color: var(--text-primary);
+            font-family: var(--font);
+            font-size: 0.9rem;
+            outline: none;
+        }
+        input:focus { border-color: var(--accent); }
+        input:disabled { color: var(--text-dim); }
+        .msg { font-size: 0.78rem; line-height: 1.6; border-radius: 8px; padding: 12px 14px; margin-top: 4px; display: none; }
+        .msg.show { display: block; }
+        .msg.ok { border: 1px solid rgba(110,203,255,0.4); color: var(--accent); background: rgba(110,203,255,0.06); }
+        .msg.err { border: 1px solid rgba(255,75,75,0.4); color: var(--danger); background: rgba(255,75,75,0.06); }
+        .hidden { display: none !important; }
+        .lock-note { font-size: 0.74rem; color: var(--text-dim); line-height: 1.7; margin-top: 14px; }
+        .pill { display: inline-block; font-size: 0.62rem; letter-spacing: 1.5px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(110,203,255,0.1); color: var(--accent); border: 1px solid rgba(110,203,255,0.3); }
+        .foot { margin-top: 22px; font-size: 0.68rem; color: var(--text-dim); line-height: 1.8; text-align: center; }
+        .foot a { color: var(--accent); }
+        .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+        .online-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; display: inline-block; margin-right: 7px; box-shadow: 0 0 8px #4ade80; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <header class="top">
+        <div>
+            <h1>GhostLink // <span>Admin</span></h1>
+            <div class="sub">javier.textnexus.me · visits dashboard</div>
+        </div>
+        <div class="toolbar" id="toolbar" style="display:none;">
+            <button class="btn" id="refresh-btn">Refresh</button>
+            <a class="btn" href="index.html">Back to site</a>
+            <button class="btn" id="signout-btn">Sign out</button>
+        </div>
+    </header>
+
+    <!-- SIGN-IN -->
+    <section class="card" id="auth-card">
+        <h2>Owner sign-in</h2>
+        <p style="font-size:0.8rem;color:var(--text-dim);line-height:1.7;margin-bottom:18px;">
+            This panel is restricted to one account. Enter the owner email and we'll send a one-time
+            sign-in link to that inbox. Any other address is rejected.
+        </p>
+        <div class="field">
+            <label>Owner email</label>
+            <input type="email" id="email-input" value="jcruz016@stpaul.k12.mn.us" spellcheck="false">
+        </div>
+        <button class="btn primary" id="send-link-btn" style="width:100%;">Send sign-in link</button>
+        <div class="msg" id="auth-msg"></div>
+        <p class="lock-note">
+            Access is checked against the signed-in account's email on every load — not just a hidden button.
+            If the link does not arrive, check spam, then the Supabase auth email settings for this project.
+        </p>
+    </section>
+
+    <!-- DENIED -->
+    <section class="card hidden" id="denied-card">
+        <h2>Access denied</h2>
+        <p style="font-size:0.85rem;color:var(--text-dim);line-height:1.7;" id="denied-text">
+            This account is not the site owner.
+        </p>
+        <button class="btn" id="denied-signout-btn" style="margin-top:16px;">Sign out and try another email</button>
+    </section>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="hidden">
+        <section class="grid">
+            <div class="stat">
+                <div class="label">Total visits</div>
+                <div class="value" id="stat-total">—</div>
+                <div class="note">All-time page views counted on this domain.</div>
+            </div>
+            <div class="stat">
+                <div class="label">Visits today</div>
+                <div class="value" id="stat-today">—</div>
+                <div class="note" id="stat-today-note">Measured since your first check today.</div>
+            </div>
+            <div class="stat">
+                <div class="label">Visits this week</div>
+                <div class="value" id="stat-week">—</div>
+                <div class="note">Sum of the daily figures below.</div>
+            </div>
+            <div class="stat">
+                <div class="label">Online now</div>
+                <div class="value" id="stat-online">—</div>
+                <div class="note"><span class="online-dot"></span>Live presence on the site.</div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Last 7 days</h2>
+            <div class="chart" id="chart"></div>
+            <div class="note" style="font-size:0.68rem;color:var(--text-dim);margin-top:14px;line-height:1.7;">
+                Daily numbers are measured from the counter snapshots this panel records each time you open it,
+                so early history fills in as you check back.
+            </div>
+        </section>
+
+        <section class="grid">
+            <div class="card">
+                <h2>This browser</h2>
+                <div class="row"><span>Visits counted</span><span id="browser-visits">—</span></div>
+                <div class="row"><span>First visit</span><span id="browser-first">—</span></div>
+                <div class="row"><span>Last visit</span><span id="browser-last">—</span></div>
+            </div>
+            <div class="card">
+                <h2>Cloudflare domain</h2>
+                <div class="row"><span>Hostname</span><span id="cf-host">—</span></div>
+                <div class="row"><span>Edge</span><span>Cloudflare + GitHub Pages</span></div>
+                <div class="row"><span>Panel access</span><span id="session-email">—</span></div>
+                <a class="btn" style="margin-top:16px;width:100%;" href="https://dash.cloudflare.com/?to=/:account/textnexus.me/analytics/traffic" target="_blank" rel="noopener noreferrer">Open Cloudflare analytics</a>
+            </div>
+        </section>
+
+        <p class="foot">
+            Edge-level traffic (countries, referrers, threats) lives in the Cloudflare dashboard linked above.
+            This panel reports the visit counter that the site itself records for this domain.
+        </p>
+    </div>
+
+    <p class="foot" id="footer-note">Restricted area · owner access only</p>
+</div>
+
+<script>
+(function () {
+    const ALLOWED_EMAIL = 'jcruz016@stpaul.k12.mn.us';
+    const SUPABASE_URL = 'https://npvjxyxnmdcncupbwdsx.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdmp4eXhubWRjbmN1cGJ3ZHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyOTU0MjcsImV4cCI6MjA4Mjg3MTQyN30.hZhxWo1iR8O0r66vIeElcsPy1PljtpJ_dEbAOvhrr1Q';
+    const SNAPSHOT_KEY = 'gl_admin_snapshots_v1';
+    const ALLOWED = ALLOWED_EMAIL.toLowerCase();
+
+    const $ = (id) => document.getElementById(id);
+    const authCard = $('auth-card');
+    const deniedCard = $('denied-card');
+    const dashboard = $('dashboard');
+    const toolbar = $('toolbar');
+    const authMsg = $('auth-msg');
+
+    let client = null;
+    let onlineChannel = null;
+
+    function showAuthMessage(text, kind) {
+        authMsg.textContent = text;
+        authMsg.className = 'msg show ' + (kind || 'ok');
+    }
+
+    function fmt(n) {
+        if (n === null || n === undefined || isNaN(n)) return '—';
+        return Number(n).toLocaleString();
+    }
+
+    function dayKey(date) {
+        return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+    }
+
+    function readSnapshots() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '[]');
+            return Array.isArray(raw) ? raw.filter(s => s && typeof s.t === 'number' && typeof s.total === 'number') : [];
+        } catch (e) { return []; }
+    }
+
+    function recordSnapshot(total) {
+        const snaps = readSnapshots();
+        const last = snaps[snaps.length - 1];
+        // one sample per 10 minutes is plenty for a daily chart
+        if (!last || Date.now() - last.t > 10 * 60 * 1000 || last.total !== total) {
+            snaps.push({ t: Date.now(), total: total });
+        }
+        localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(-4000)));
+        return snaps;
+    }
+
+    function dailySeries(snaps) {
+        const byDay = new Map();
+        snaps.forEach(s => {
+            const key = dayKey(new Date(s.t));
+            const entry = byDay.get(key) || { first: s.total, last: s.total };
+            entry.last = s.total;
+            byDay.set(key, entry);
+        });
+        const days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const key = dayKey(d);
+            const entry = byDay.get(key);
+            days.push({
+                key,
+                label: d.toLocaleDateString(undefined, { weekday: 'short' }),
+                value: entry ? Math.max(0, entry.last - entry.first) : null
+            });
+        }
+        return days;
+    }
+
+    function renderChart(days) {
+        const chart = $('chart');
+        chart.innerHTML = '';
+        const max = Math.max(1, ...days.map(d => d.value || 0));
+        days.forEach(day => {
+            const col = document.createElement('div');
+            col.className = 'bar-col';
+            const num = document.createElement('div');
+            num.className = 'num';
+            num.textContent = day.value === null ? '–' : fmt(day.value);
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = Math.max(2, Math.round(((day.value || 0) / max) * 100)) + '%';
+            const label = document.createElement('div');
+            label.className = 'day';
+            label.textContent = day.label;
+            col.append(num, bar, label);
+            chart.appendChild(col);
+        });
+    }
+
+    async function loadVisits() {
+        if (!client) return;
+        const { data, error } = await client
+            .from('page_views')
+            .select('total_views')
+            .eq('id', 1)
+            .maybeSingle();
+
+        if (error || !data) {
+            $('stat-total').textContent = 'n/a';
+            console.warn('Visit counter unavailable:', error);
+            return;
+        }
+
+        const total = Number(data.total_views) || 0;
+        $('stat-total').textContent = fmt(total);
+
+        const snaps = recordSnapshot(total);
+        const days = dailySeries(snaps);
+        renderChart(days);
+
+        const todayKey = dayKey(new Date());
+        const todaySnaps = snaps.filter(s => dayKey(new Date(s.t)) === todayKey);
+        if (todaySnaps.length > 1) {
+            const first = todaySnaps[0];
+            const delta = Math.max(0, total - first.total);
+            $('stat-today').textContent = fmt(delta);
+            $('stat-today-note').textContent = 'Since your first check today (' +
+                new Date(first.t).toLocaleTimeString() + ').';
+        } else {
+            $('stat-today').textContent = '0';
+            $('stat-today-note').textContent = 'First check today — reopen later to see today\'s growth.';
+        }
+
+        const weekSum = days.reduce((sum, d) => sum + (d.value || 0), 0);
+        $('stat-week').textContent = fmt(weekSum);
+    }
+
+    function renderBrowserStats() {
+        const visits = parseInt(localStorage.getItem('gl_visit_count') || '0', 10);
+        const last = parseInt(localStorage.getItem('gl_last_visit') || '0', 10);
+        $('browser-visits').textContent = fmt(visits);
+        $('browser-last').textContent = last ? new Date(last).toLocaleString() : '—';
+        const firstSeen = localStorage.getItem('gl_admin_first_seen');
+        if (!firstSeen) localStorage.setItem('gl_admin_first_seen', String(Date.now()));
+        const first = parseInt(firstSeen || String(Date.now()), 10);
+        $('browser-first').textContent = new Date(first).toLocaleDateString();
+        $('cf-host').textContent = location.hostname;
+    }
+
+    function startPresence() {
+        if (!client || onlineChannel) return;
+        onlineChannel = client.channel('ghostlink-online', {
+            config: { presence: { key: 'gl-admin-' + Math.random().toString(36).slice(2, 9) } }
+        });
+        onlineChannel.on('presence', { event: 'sync' }, () => {
+            const state = onlineChannel.presenceState();
+            $('stat-online').textContent = fmt(Object.keys(state).length);
+        });
+        onlineChannel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') onlineChannel.track({ at: new Date().toISOString(), admin: true });
+        });
+    }
+
+    function stopPresence() {
+        if (onlineChannel && client) client.removeChannel(onlineChannel);
+        onlineChannel = null;
+        $('stat-online').textContent = '—';
+    }
+
+    function showDashboard(session) {
+        authCard.classList.add('hidden');
+        deniedCard.classList.add('hidden');
+        dashboard.classList.remove('hidden');
+        toolbar.style.display = 'flex';
+        $('session-email').textContent = session.user.email;
+        renderBrowserStats();
+        startPresence();
+        loadVisits();
+    }
+
+    function showAuth() {
+        dashboard.classList.add('hidden');
+        deniedCard.classList.add('hidden');
+        authCard.classList.remove('hidden');
+        toolbar.style.display = 'none';
+        stopPresence();
+    }
+
+    function showDenied(email) {
+        dashboard.classList.add('hidden');
+        authCard.classList.add('hidden');
+        deniedCard.classList.remove('hidden');
+        toolbar.style.display = 'flex';
+        $('denied-text').textContent = 'The signed-in account (' + email + ') is not the site owner. ' +
+            'Only ' + ALLOWED_EMAIL + ' can open this panel.';
+        stopPresence();
+    }
+
+    async function handleSession(session) {
+        if (!session || !session.user) { showAuth(); return; }
+        const email = (session.user.email || '').toLowerCase();
+        if (email !== ALLOWED) { showDenied(session.user.email || 'unknown'); return; }
+        showDashboard(session);
+    }
+
+    function init() {
+        if (!window.supabase) {
+            showAuthMessage('The Supabase library failed to load. Disable any content blocker and reload.', 'err');
+            $('send-link-btn').disabled = true;
+            return;
+        }
+        client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        client.auth.getSession().then(({ data }) => handleSession(data && data.session));
+        client.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') handleSession(session); });
+
+        $('send-link-btn').addEventListener('click', async () => {
+            const email = ($('email-input').value || '').trim().toLowerCase();
+            if (email !== ALLOWED) {
+                showAuthMessage('That address is not the site owner. Only ' + ALLOWED_EMAIL + ' can sign in.', 'err');
+                return;
+            }
+            const btn = $('send-link-btn');
+            btn.disabled = true;
+            showAuthMessage('Sending sign-in link…', 'ok');
+            const { error } = await client.auth.signInWithOtp({
+                email: ALLOWED_EMAIL,
+                options: { emailRedirectTo: location.origin + location.pathname }
+            });
+            btn.disabled = false;
+            if (error) showAuthMessage('Could not send the link: ' + error.message, 'err');
+            else showAuthMessage('Link sent to ' + ALLOWED_EMAIL + '. Open it on this device to finish signing in.', 'ok');
+        });
+
+        const signOut = async () => {
+            if (client) await client.auth.signOut();
+            showAuth();
+        };
+        $('signout-btn').addEventListener('click', signOut);
+        $('denied-signout-btn').addEventListener('click', signOut);
+        $('refresh-btn').addEventListener('click', () => { renderBrowserStats(); loadVisits(); });
+    }
+
+    init();
+})();
+</script>
+</body>
+</html>
